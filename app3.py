@@ -13,17 +13,15 @@ import main3 as main
 # ---------------------------
 st.set_page_config(page_title="💰 Hissab Assistant", layout="centered")
 
-st.title("💰 Hissab Assistant (Optimized Version)")
+st.title("💰 Hissab Assistant (Optimized & Fixed)")
 st.caption("AI-powered financial calculator with a self-improving feedback loop.")
 
 # --- Session State Initialization ---
-if 'response_generated' not in st.session_state:
-    st.session_state.response_generated = False
 if 'hindi_story' not in st.session_state:
     st.session_state.hindi_story = ""
 if 'hinglish_story' not in st.session_state:
     st.session_state.hinglish_story = ""
-if 'category' not in st.session_state: # Category store karne ke liye
+if 'category' not in st.session_state:
     st.session_state.category = ""
 if 'detailed_text' not in st.session_state:
     st.session_state.detailed_text = ""
@@ -47,7 +45,7 @@ def handle_bad_feedback():
     st.toast(f"📝 Galti: {analysis}" if analysis else "📝 Feedback ke liye shukriya.")
     st.session_state.feedback_given = True
 
-# --- Input Section (Audio part is unchanged) ---
+# --- Input Section ---
 mode = st.radio("Aap input kaise dena chahte hain:", ["🎤 Voice", "⌨️ Text"], horizontal=True)
 user_story_input = None
 
@@ -76,24 +74,27 @@ else:
     user_story_input = st.text_area("Apni kahani yahan likhiye:", placeholder="Example: Mere paas 500 rupaye the...")
 
 # ---------------------------
-# Core Logic: Optimized Processing
+# Core Logic: Optimized Processing (INFINITE LOOP FIXED)
 # ---------------------------
-if user_story_input:
+# --- NAYA CHANGE: Infinite loop ko rokne ke liye naya logic ---
+# Yeh check karega ki naya input aaya hai ya nahi
+if user_story_input and user_story_input != st.session_state.hindi_story:
+    # Naye input aane par state reset karein
     st.session_state.hindi_story = user_story_input
-    st.session_state.response_generated = True
     st.session_state.feedback_given = False
     st.session_state.detailed_text = ""
     st.session_state.error_analysis = None
     
-    # --- OPTIMIZATION: Sirf ek baar pre-processing karein ---
+    # Pre-processing yahin par karein
     with st.spinner("Input ko samajha ja raha hai..."):
         api_key = os.getenv("GOOGLE_API_KEY")
         hinglish_text, category = main.preprocess_and_classify(api_key, user_story_input)
         st.session_state.hinglish_story = hinglish_text
         st.session_state.category = category
-    st.rerun()
+    # --- NAYA CHANGE: st.rerun() ko hata diya gaya hai ---
 
-if st.session_state.response_generated:
+# --- NAYA CHANGE: Response display ka logic ab sirf 'hindi_story' par nirbhar karega ---
+if st.session_state.hindi_story:
     st.divider()
     st.subheader("📊 Aapka Detailed Hisaab")
     
@@ -133,5 +134,3 @@ if st.session_state.response_generated:
                 st.audio(audio_file, format="audio/mp3")
             else:
                 st.warning("Audio summary generate nahi ho paya.")
-
-
