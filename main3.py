@@ -5,8 +5,8 @@ from gtts import gTTS
 import json
 from dotenv import load_dotenv
 
-from rag import get_enhanced_prompt
-from vectordb import (
+from ragnew import get_enhanced_prompt
+from vectordbnew import (
     setup_vector_db, 
     add_user_prompt_to_db,
     setup_bad_prompts_db,
@@ -148,4 +148,5 @@ def cleanup_old_audio_files(keep=3):
         for f in files[keep:]: os.remove(f)
     except Exception as e:
         print(f"Purani audio files delete karte samay error aaya: {e}")
+
 
