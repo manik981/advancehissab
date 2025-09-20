@@ -1,0 +1,12 @@
+streamlit
+speechrecognition
+pyaudio
+gTTS
+python-dotenv
+google-generativeai
+streamlit-mic-recorder
+pydub
+pandas
+numpy
+sentence-transformers
+scikit-learn
