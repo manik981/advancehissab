@@ -5,7 +5,7 @@
 # 2. Retrieve a random sample of examples from that specific category.
 # 3. Construct a detailed "few-shot" prompt with these random examples to guide the main LLM.
 
-from vectordb import get_category_from_prompt, find_random_examples_from_category
+from vectordbnew import get_category_from_prompt, find_random_examples_from_category
 
 def get_enhanced_prompt(hinglish_user_story: str) -> str:
     """
@@ -44,5 +44,6 @@ def get_enhanced_prompt(hinglish_user_story: str) -> str:
     final_prompt += "--- FINAL TASK ---\n"
     final_prompt += f"User Text: \"{hinglish_user_story}\"\n"
     final_prompt += "Your Response:\n"
+
 
     return final_prompt
