@@ -6,7 +6,7 @@ import io
 from pydub import AudioSegment
 
 # Naye advanced logic wali main file ko import karein
-import main2 as main
+import main3 as main
 
 # ---------------------------
 # Streamlit App UI Setup
@@ -133,4 +133,5 @@ if st.session_state.response_generated:
                 st.audio(audio_file, format="audio/mp3")
             else:
                 st.warning("Audio summary generate nahi ho paya.")
+
 
