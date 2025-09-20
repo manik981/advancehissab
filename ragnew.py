@@ -1,5 +1,5 @@
 # rag.py - Optimized Retrieval-Augmented Generation Engine
-from vectordb import find_random_examples_from_category
+from vectordbnew import find_random_examples_from_category
 
 def get_enhanced_prompt(hinglish_user_story: str, category: str) -> str:
     """
@@ -43,4 +43,5 @@ def get_enhanced_prompt(hinglish_user_story: str, category: str) -> str:
     final_prompt += "Your Response:\n"
     
     return final_prompt
+
 
