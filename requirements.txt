@@ -4,6 +4,7 @@ pyaudio
 gTTS
 python-dotenv
 google-generativeai
+groq
 streamlit-mic-recorder
 pydub
 pandas
