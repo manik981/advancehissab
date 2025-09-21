@@ -1,9 +1,10 @@
-# vectordb.py - Advanced Vector Database Engine with Dual DB Support
+# vectordbnew.py - Upgraded Vector DB Engine with Hybrid Retrieval & Structured Logging
 import os
 import pandas as pd
 import numpy as np
 import random
 from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -17,6 +18,9 @@ MODEL_NAME = 'paraphrase-multilingual-MiniLM-L12-v2'
 embedding_model = SentenceTransformer(MODEL_NAME)
 hissab_db = None
 bad_prompts_db = None
+category_embeddings = None # Category embeddings ko store karne ke liye
+
+# --- Initial Data & Category Descriptions ---
 
 # --- Initial Data ---
 INITIAL_PROMPTS = [
@@ -33,18 +37,48 @@ INITIAL_PROMPTS = [
     {"category": "income_and_balance", "user_text": "Mere paas 1000 rupay the, maine 300 kharch kar diye, ab kitne bachche hain?", "model_response": "**Account ka Hisaab:**\n- **Shuruaati Balance:** ₹1,000\n- **Kharch:** - ₹300\n- **Aapke paas ab ₹700 bache hain.**"}
 ]
 
+# Semantic search ke liye har category ka matlab
+CATEGORY_DESCRIPTIONS = {
+    "personal_expense_tracking": "Calculating total daily expenses for one person.",
+    "group_settlement": "Settling shared expenses between multiple friends on a trip or event.",
+    "monthly_budget_and_savings": "Calculating monthly savings based on salary and recurring bills like rent.",
+    "price_comparison": "Comparing the prices of two or more items to find which is cheaper.",
+    "lending_and_borrowing": "Tracking money given or taken as a loan between individuals.",
+    "investment_and_profit": "Calculating profit or loss from investments like stocks.",
+    "loan_and_emi": "Calculating loan repayments and Equated Monthly Installments (EMI).",
+    "income_and_balance": "Calculating the final balance after income and expenses in an account.",
+    "discount_and_offers": "Calculating the final price after applying a percentage discount.",
+    "salary_calculation": "Calculating total salary based on daily or hourly wages.",
+    "unknown": "A general financial query that does not fit other categories."
+}
+
 # --- Database Setup ---
 def _initialize_database():
+    global category_embeddings
     print("Naya 'Good Prompts' Vector DB banaya ja raha hai...")
     df = pd.DataFrame(INITIAL_PROMPTS)
+    # User prompts ke embeddings
     df['embedding'] = list(embedding_model.encode(df['user_text'].tolist()))
     df.to_pickle(DB_FILE_PATH)
+    
+    # Category descriptions ke embeddings (Semantic Search ke liye)
+    categories = list(CATEGORY_DESCRIPTIONS.keys())
+    descriptions = list(CATEGORY_DESCRIPTIONS.values())
+    cat_embeds = embedding_model.encode(descriptions)
+    category_embeddings = {cat: emb for cat, emb in zip(categories, cat_embeds)}
+    
     return df
 
 def setup_vector_db():
-    global hissab_db
+    global hissab_db, category_embeddings
     if os.path.exists(DB_FILE_PATH):
         hissab_db = pd.read_pickle(DB_FILE_PATH)
+        # Agar DB pehle se hai, to bhi category embeddings banayein
+        if category_embeddings is None:
+            categories = list(CATEGORY_DESCRIPTIONS.keys())
+            descriptions = list(CATEGORY_DESCRIPTIONS.values())
+            cat_embeds = embedding_model.encode(descriptions)
+            category_embeddings = {cat: emb for cat, emb in zip(categories, cat_embeds)}
     else:
         hissab_db = _initialize_database()
 
@@ -54,44 +88,67 @@ def setup_bad_prompts_db():
         bad_prompts_db = pd.read_pickle(BAD_DB_FILE_PATH)
     else:
         print("Naya 'Bad Prompts' DB banaya ja raha hai...")
-        df = pd.DataFrame(columns=['user_text', 'model_response', 'embedding'])
+        df = pd.DataFrame(columns=['log_data']) # Structured data ke liye ek hi column
         df.to_pickle(BAD_DB_FILE_PATH)
         bad_prompts_db = df
 
-# --- Core Logic Functions ---
-def get_all_categories() -> list:
-    """Returns a list of all unique categories from the DB."""
-    global hissab_db
-    return hissab_db['category'].unique().tolist() if hissab_db is not None else []
+# --- Core Logic Functions (Updated) ---
 
-def find_random_examples_from_category(category: str, max_examples: int = 5) -> list:
+def find_semantic_categories(user_prompt: str, top_k: int = 2) -> list:
+    """Performs semantic search to find the top_k most relevant categories."""
+    global category_embeddings
+    if not category_embeddings: return []
+
+    user_embedding = embedding_model.encode([user_prompt])[0]
+    
+    categories = list(category_embeddings.keys())
+    embeddings = np.array(list(category_embeddings.values()))
+    
+    similarities = cosine_similarity([user_embedding], embeddings)[0]
+    
+    # Sabse similar categories ke indices nikalein
+    top_indices = np.argsort(similarities)[-top_k:][::-1]
+    
+    return [categories[i] for i in top_indices]
+
+def find_random_examples_from_category(category: str, max_examples: int = 5, min_examples: int = 1) -> list:
     global hissab_db
-    if hissab_db is None or hissab_db.empty: return []
     category_df = hissab_db[hissab_db['category'] == category]
     if category_df.empty: return []
+    
     num_samples = min(max_examples, len(category_df))
+    if num_samples < min_examples: return [] # Agar min examples bhi nahi hain to khali lautein
+        
     return category_df.sample(n=num_samples)[['user_text', 'model_response']].to_dict(orient='records')
 
-# --- Functions for Adding Data ---
-def add_user_prompt_to_db(hinglish_user_prompt: str, category: str):
-    global hissab_db
-    print(f"Naya prompt 'Good DB' mein add kiya ja raha hai under '{category}'")
-    embedding = embedding_model.encode([hinglish_user_prompt])[0]
-    new_entry = pd.DataFrame([{'category': category, 'user_text': hinglish_user_prompt, 'embedding': embedding, 'model_response': ''}])
-    hissab_db = pd.concat([hissab_db, new_entry], ignore_index=True)
-    hissab_db.to_pickle(DB_FILE_PATH)
-    print("Prompt save ho gaya.")
+# --- Functions for Adding Data (Updated) ---
 
-def add_to_bad_prompts_db(hinglish_user_prompt: str, model_response: str):
+def add_user_prompt_to_db(hinglish_prompt: str, model_response: str, primary_category: str):
+    """Saves a new user prompt AND its successful response as an example."""
+    global hissab_db
+    print(f"Naya example '{primary_category}' category mein add kiya ja raha hai...")
+    
+    embedding = embedding_model.encode([hinglish_prompt])[0]
+    new_example = pd.DataFrame([{
+        'category': primary_category, 
+        'user_text': hinglish_prompt, 
+        'model_response': model_response, # Model ka response bhi save karein
+        'embedding': embedding
+    }])
+    
+    hissab_db = pd.concat([hissab_db, new_example], ignore_index=True)
+    hissab_db.to_pickle(DB_FILE_PATH)
+    print("Naya example 'Good DB' mein save ho gaya.")
+
+def add_to_bad_prompts_db(log_data: dict):
+    """Saves a structured log of a 'bad' interaction."""
     global bad_prompts_db
-    print(f"Galtiyon wala prompt 'Bad DB' mein add kiya ja raha hai")
-    embedding = embedding_model.encode([hinglish_user_prompt])[0]
-    new_entry = pd.DataFrame([{'user_text': hinglish_user_prompt, 'model_response': model_response, 'embedding': embedding}])
-    bad_prompts_db = pd.concat([bad_prompts_db, new_entry], ignore_index=True)
+    print("Galti ka structured log 'Bad DB' mein save kiya ja raha hai...")
+    
+    new_log = pd.DataFrame([{'log_data': log_data}])
+    bad_prompts_db = pd.concat([bad_prompts_db, new_log], ignore_index=True)
     bad_prompts_db.to_pickle(BAD_DB_FILE_PATH)
     print("'Bad DB' update ho gaya hai.")
 
-def is_bad_prompts_db_empty():
-    global bad_prompts_db
-    return bad_prompts_db is None or bad_prompts_db.empty
-
+def get_all_categories() -> list:
+    return list(CATEGORY_DESCRIPTIONS.keys())
