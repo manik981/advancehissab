@@ -18,11 +18,9 @@ MODEL_NAME = 'paraphrase-multilingual-MiniLM-L12-v2'
 embedding_model = SentenceTransformer(MODEL_NAME)
 hissab_db = None
 bad_prompts_db = None
-category_embeddings = None # Category embeddings ko store karne ke liye
+category_embeddings = None
 
 # --- Initial Data & Category Descriptions ---
-
-# --- Initial Data ---
 INITIAL_PROMPTS = [
     {"category": "personal_expense_tracking", "user_text": "Aaj 30 rupaye bus ke lage, 250 ka khana khaya, aur 500 ki ek shirt kharidi.", "model_response": "Aapke aaj ke kul kharch is prakaar hain:\n- Bus: ₹30\n- Khana: ₹250\n- Shirt: ₹500\n**Kul Kharch: ₹830**"},
     {"category": "group_settlement", "user_text": "Hum 3 dost, main, Rohit aur Suman, Goa gaye. Maine hotel ke 6000 diye, Rohit ne khaane ke 3000 kharch kiye.", "model_response": "**Trip ka Hisaab:**\n- **Kul Kharch:** ₹9,000\n- **Log:** 3\n- **Prati Vyakti Hissa:** ₹3,000\n**Settlement:**\n- Aapne ₹3,000 extra diye hain.\n- Rohit ne apna hissa de diya hai.\n- **Isliye, Suman ko aapko ₹3,000 dene hain.**"},
@@ -37,7 +35,6 @@ INITIAL_PROMPTS = [
     {"category": "income_and_balance", "user_text": "Mere paas 1000 rupay the, maine 300 kharch kar diye, ab kitne bachche hain?", "model_response": "**Account ka Hisaab:**\n- **Shuruaati Balance:** ₹1,000\n- **Kharch:** - ₹300\n- **Aapke paas ab ₹700 bache hain.**"}
 ]
 
-# Semantic search ke liye har category ka matlab
 CATEGORY_DESCRIPTIONS = {
     "personal_expense_tracking": "Calculating total daily expenses for one person.",
     "group_settlement": "Settling shared expenses between multiple friends on a trip or event.",
@@ -52,28 +49,23 @@ CATEGORY_DESCRIPTIONS = {
     "unknown": "A general financial query that does not fit other categories."
 }
 
-# --- Database Setup ---
 def _initialize_database():
     global category_embeddings
     print("Naya 'Good Prompts' Vector DB banaya ja raha hai...")
     df = pd.DataFrame(INITIAL_PROMPTS)
-    # User prompts ke embeddings
     df['embedding'] = list(embedding_model.encode(df['user_text'].tolist()))
     df.to_pickle(DB_FILE_PATH)
     
-    # Category descriptions ke embeddings (Semantic Search ke liye)
     categories = list(CATEGORY_DESCRIPTIONS.keys())
     descriptions = list(CATEGORY_DESCRIPTIONS.values())
     cat_embeds = embedding_model.encode(descriptions)
     category_embeddings = {cat: emb for cat, emb in zip(categories, cat_embeds)}
-    
     return df
 
 def setup_vector_db():
     global hissab_db, category_embeddings
     if os.path.exists(DB_FILE_PATH):
         hissab_db = pd.read_pickle(DB_FILE_PATH)
-        # Agar DB pehle se hai, to bhi category embeddings banayein
         if category_embeddings is None:
             categories = list(CATEGORY_DESCRIPTIONS.keys())
             descriptions = list(CATEGORY_DESCRIPTIONS.values())
@@ -88,63 +80,40 @@ def setup_bad_prompts_db():
         bad_prompts_db = pd.read_pickle(BAD_DB_FILE_PATH)
     else:
         print("Naya 'Bad Prompts' DB banaya ja raha hai...")
-        df = pd.DataFrame(columns=['log_data']) # Structured data ke liye ek hi column
+        df = pd.DataFrame(columns=['log_data'])
         df.to_pickle(BAD_DB_FILE_PATH)
         bad_prompts_db = df
 
-# --- Core Logic Functions (Updated) ---
-
 def find_semantic_categories(user_prompt: str, top_k: int = 2) -> list:
-    """Performs semantic search to find the top_k most relevant categories."""
     global category_embeddings
     if not category_embeddings: return []
-
     user_embedding = embedding_model.encode([user_prompt])[0]
-    
     categories = list(category_embeddings.keys())
     embeddings = np.array(list(category_embeddings.values()))
-    
     similarities = cosine_similarity([user_embedding], embeddings)[0]
-    
-    # Sabse similar categories ke indices nikalein
     top_indices = np.argsort(similarities)[-top_k:][::-1]
-    
     return [categories[i] for i in top_indices]
 
 def find_random_examples_from_category(category: str, max_examples: int = 5, min_examples: int = 1) -> list:
     global hissab_db
     category_df = hissab_db[hissab_db['category'] == category]
     if category_df.empty: return []
-    
     num_samples = min(max_examples, len(category_df))
-    if num_samples < min_examples: return [] # Agar min examples bhi nahi hain to khali lautein
-        
+    if num_samples < min_examples: return []
     return category_df.sample(n=num_samples)[['user_text', 'model_response']].to_dict(orient='records')
 
-# --- Functions for Adding Data (Updated) ---
-
 def add_user_prompt_to_db(hinglish_prompt: str, model_response: str, primary_category: str):
-    """Saves a new user prompt AND its successful response as an example."""
     global hissab_db
     print(f"Naya example '{primary_category}' category mein add kiya ja raha hai...")
-    
     embedding = embedding_model.encode([hinglish_prompt])[0]
-    new_example = pd.DataFrame([{
-        'category': primary_category, 
-        'user_text': hinglish_prompt, 
-        'model_response': model_response, # Model ka response bhi save karein
-        'embedding': embedding
-    }])
-    
+    new_example = pd.DataFrame([{'category': primary_category, 'user_text': hinglish_prompt, 'model_response': model_response, 'embedding': embedding}])
     hissab_db = pd.concat([hissab_db, new_example], ignore_index=True)
     hissab_db.to_pickle(DB_FILE_PATH)
     print("Naya example 'Good DB' mein save ho gaya.")
 
 def add_to_bad_prompts_db(log_data: dict):
-    """Saves a structured log of a 'bad' interaction."""
     global bad_prompts_db
     print("Galti ka structured log 'Bad DB' mein save kiya ja raha hai...")
-    
     new_log = pd.DataFrame([{'log_data': log_data}])
     bad_prompts_db = pd.concat([bad_prompts_db, new_log], ignore_index=True)
     bad_prompts_db.to_pickle(BAD_DB_FILE_PATH)
@@ -152,3 +121,10 @@ def add_to_bad_prompts_db(log_data: dict):
 
 def get_all_categories() -> list:
     return list(CATEGORY_DESCRIPTIONS.keys())
+
+# --- NAYA CHANGE: YEH FUNCTION ADD KIYA GAYA HAI ---
+def is_bad_prompts_db_empty():
+    """Checks if the bad prompts database has any entries."""
+    global bad_prompts_db
+    return bad_prompts_db is None or bad_prompts_db.empty
+
