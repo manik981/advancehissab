@@ -75,6 +75,7 @@ else:
     user_story_input = st.text_area("Apni kahani yahan likhiye:", placeholder="Example: Mere paas 500 rupaye the...")
 
 # --- Core Logic: Processing and State Management ---
+# --- Core Logic: Processing and State Management (FIXED) ---
 if user_story_input and user_story_input != st.session_state.context.get("user_hindi_query"):
     st.session_state.feedback_given = False
     st.session_state.detailed_text = ""
@@ -86,14 +87,24 @@ if user_story_input and user_story_input != st.session_state.context.get("user_h
         # Generator se response stream karein
         response_generator = main.process_query_stream(api_key, user_story_input)
         
-        # Pehle response ko stream karke detailed_text mein store karein
-        st.session_state.detailed_text = st.write_stream(response_generator)
+        # --- NAYA CHANGE: Yahan par poora context object capture karein ---
+        # Generator stream khatam hone ke baad aakhir mein ek 'context' dictionary return karega.
+        # Hum pehle response ko stream karke 'detailed_text' mein save karenge.
+        streamed_chunks = []
+        for chunk in response_generator:
+            if isinstance(chunk, str):
+                streamed_chunks.append(chunk)
+                # UI mein live update ke liye (optional)
+                st.write("".join(streamed_chunks)) 
+            elif isinstance(chunk, dict):
+                # Jab aakhir mein dictionary milti hai, to woh context hai
+                st.session_state.context = chunk
         
-        # Aakhir mein, generator se context object ko capture karein
-        # Iske liye main3.py mein 'yield from' ki jagah 'return' ka istemal kiya gaya hai
-        st.session_state.context = response_generator.gi_return
-    
+        st.session_state.detailed_text = "".join(streamed_chunks)
+
     st.session_state.processing_complete = True
+    # Naye response ke liye UI ko turant refresh karein
+    st.rerun()
 
 # --- Display Section ---
 if st.session_state.processing_complete:
@@ -128,4 +139,5 @@ if st.session_state.processing_complete:
                 st.audio(audio_file, format="audio/mp3")
             else:
                 st.warning("Audio summary generate nahi ho paya.")
+
 
