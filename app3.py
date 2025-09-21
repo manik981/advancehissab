@@ -12,41 +12,48 @@ import main3 as main
 # Streamlit App UI Setup
 # ---------------------------
 st.set_page_config(page_title="💰 Hissab Assistant", layout="centered")
-st.title("💰 Hissab Assistant (Hybrid RAG Version)")
-st.caption("AI calculator with semantic search and self-improving feedback.")
+st.title("💰 Hissab Assistant (Optimized & Fixed)")
+st.caption("AI-powered financial calculator with a self-improving feedback loop.")
 
 # --- Session State Initialization ---
-# 'context' dictionary ab saari zaroori jaankari store karegi
-if 'context' not in st.session_state:
-    st.session_state.context = {}
+if 'hindi_story' not in st.session_state:
+    st.session_state.hindi_story = ""
+if 'hinglish_story' not in st.session_state:
+    st.session_state.hinglish_story = ""
+if 'category' not in st.session_state:
+    st.session_state.category = ""
 if 'detailed_text' not in st.session_state:
     st.session_state.detailed_text = ""
 if 'feedback_given' not in st.session_state:
     st.session_state.feedback_given = False
+if 'error_analysis' not in st.session_state:
+    st.session_state.error_analysis = None
 if 'processing_complete' not in st.session_state:
     st.session_state.processing_complete = False
 
-# --- Feedback Callback Functions (Updated to use context) ---
+# --- Feedback Callback Functions ---
 def handle_good_feedback():
-    # 'main3.py' ko poora context dictionary pass karein
-    main.save_good_prompt(st.session_state.context, st.session_state.detailed_text)
-    st.toast("✅ Shukriya! Is example se system aur behtar hoga.")
+    # 'context' object ki ab zaroorat nahi, seedhe state se values bhejenge
+    main.save_good_prompt(st.session_state.hinglish_story, st.session_state.category, st.session_state.detailed_text)
+    st.toast("✅ Shukriya! Isse system aur behtar hoga.")
     st.session_state.feedback_given = True
 
 def handle_bad_feedback():
     api_key = os.getenv("GOOGLE_API_KEY")
-    # 'main3.py' ko poora context dictionary pass karein for structured logging
-    main.save_bad_prompt(st.session_state.context, st.session_state.detailed_text)
-    
+    # Structured logging ke liye zaroori jaankari pass karein
+    context = {
+        "user_hindi_query": st.session_state.hindi_story,
+        "hinglish_story": st.session_state.hinglish_story,
+        "primary_category": st.session_state.category
+    }
+    main.save_bad_prompt(context, st.session_state.detailed_text)
     with st.spinner("Galti ka vishleshan kiya ja raha hai..."):
-        analysis = main.analyze_bad_response(api_key, st.session_state.context, st.session_state.detailed_text)
-        # Context mein error analysis store karein
-        st.session_state.context['error_analysis'] = analysis
-    
+        analysis = main.analyze_bad_response(api_key, context, st.session_state.detailed_text)
+        st.session_state.error_analysis = analysis
     st.toast(f"📝 Galti: {analysis}" if analysis else "📝 Feedback ke liye shukriya.")
     st.session_state.feedback_given = True
 
-# --- Input Section (Audio code unchanged) ---
+# --- Input Section (Audio code is unchanged) ---
 mode = st.radio("Aap input kaise dena chahte hain:", ["🎤 Voice", "⌨️ Text"], horizontal=True)
 user_story_input = None
 
@@ -74,37 +81,30 @@ if mode == "🎤 Voice":
 else:
     user_story_input = st.text_area("Apni kahani yahan likhiye:", placeholder="Example: Mere paas 500 rupaye the...")
 
-# --- Core Logic: Processing and State Management ---
-# --- Core Logic: Processing and State Management (FIXED) ---
-if user_story_input and user_story_input != st.session_state.context.get("user_hindi_query"):
+# --- Core Logic: Optimized Processing (FIXED) ---
+if user_story_input and user_story_input != st.session_state.hindi_story:
+    # Naye input aane par state reset karein
+    st.session_state.hindi_story = user_story_input
     st.session_state.feedback_given = False
     st.session_state.detailed_text = ""
-    st.session_state.processing_complete = False
+    st.session_state.error_analysis = None
+    st.session_state.processing_complete = True # Processing shuru karein
     
-    with st.spinner("Hisaab lagaya ja raha hai... (Multi-step process)"):
+    # Pre-processing yahin par karein
+    with st.spinner("Input ko samajha ja raha hai... (Step 1/2)"):
         api_key = os.getenv("GOOGLE_API_KEY")
-        
-        # Generator se response stream karein
-        response_generator = main.process_query_stream(api_key, user_story_input)
-        
-        # --- NAYA CHANGE: Yahan par poora context object capture karein ---
-        # Generator stream khatam hone ke baad aakhir mein ek 'context' dictionary return karega.
-        # Hum pehle response ko stream karke 'detailed_text' mein save karenge.
-        streamed_chunks = []
-        for chunk in response_generator:
-            if isinstance(chunk, str):
-                streamed_chunks.append(chunk)
-                # UI mein live update ke liye (optional)
-                st.write("".join(streamed_chunks)) 
-            elif isinstance(chunk, dict):
-                # Jab aakhir mein dictionary milti hai, to woh context hai
-                st.session_state.context = chunk
-        
-        st.session_state.detailed_text = "".join(streamed_chunks)
+        # Groq (ya jo bhi model) se pehle pre-process karein
+        hinglish_text, category = main.preprocess_and_classify(api_key, user_story_input)
+        st.session_state.hinglish_story = hinglish_text
+        st.session_state.category = category
+    
+    # Calculation shuru karein
+    with st.spinner('Hisaab lagaya ja raha hai... (Step 2/2)'):
+        # --- YEH HAI CORRECTED FUNCTION CALL ---
+        response_generator = main.process_query_stream(api_key, st.session_state.hinglish_story, st.session_state.category)
+        st.session_state.detailed_text = "".join(list(response_generator))
 
-    st.session_state.processing_complete = True
-    # Naye response ke liye UI ko turant refresh karein
-    st.rerun()
+    st.rerun() # UI ko final result ke saath refresh karein
 
 # --- Display Section ---
 if st.session_state.processing_complete:
@@ -112,19 +112,17 @@ if st.session_state.processing_complete:
     st.subheader("📊 Aapka Detailed Hisaab")
     
     with st.chat_message("user"):
-        st.write(st.session_state.context.get("user_hindi_query", ""))
+        st.write(st.session_state.hindi_story)
 
     with st.chat_message("assistant"):
         st.write(st.session_state.detailed_text)
     
-    # --- Feedback Buttons ---
     if st.session_state.detailed_text and not st.session_state.feedback_given:
         st.write("Kya yeh jawab sahi tha?")
         col1, col2, _ = st.columns([1, 1, 3])
         col1.button("👍 Good", on_click=handle_good_feedback, use_container_width=True)
         col2.button("👎 Bad", on_click=handle_bad_feedback, use_container_width=True)
 
-    # --- Audio Summary ---
     if st.session_state.detailed_text:
         st.divider()
         st.subheader("🔊 Audio Summary")
@@ -133,11 +131,10 @@ if st.session_state.processing_complete:
             audio_file = main.generate_audio_summary(
                 api_key, 
                 st.session_state.detailed_text,
-                error_analysis=st.session_state.context.get("error_analysis")
+                error_analysis=st.session_state.error_analysis
             )
             if audio_file and os.path.exists(audio_file):
                 st.audio(audio_file, format="audio/mp3")
             else:
                 st.warning("Audio summary generate nahi ho paya.")
-
 
