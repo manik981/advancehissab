@@ -1,47 +1,42 @@
-# rag.py - Optimized Retrieval-Augmented Generation Engine
-from vectordbnew import find_random_examples_from_category
+# ragnew.py - Prompt Formatting Engine
 
-def get_enhanced_prompt(hinglish_user_story: str, category: str) -> str:
+def get_enhanced_prompt(
+    hinglish_user_story: str, 
+    primary_category: str,
+    semantic_categories: list,
+    examples: list
+) -> str:
     """
-    Creates a RAG-enhanced prompt using a pre-determined category and random example sampling.
-    This version is faster as it does not perform classification.
+    Formats all the retrieved information into a final, detailed prompt for the LLM.
     """
-    print(f"✅ Using pre-identified Category from main: '{category}'")
-    
-    # Step 1: Di gayi category se maximum 5 random examples retrieve karein.
-    random_examples = find_random_examples_from_category(category, max_examples=5)
-    print(f"✅ Retrieved {len(random_examples)} random examples from '{category}'.")
+    final_prompt = f"""You are 'HissabGPT', an AI expert specializing in Indian personal and group finance calculations.
 
-    # Step 2: LLM ke liye final, tuned prompt taiyaar karein.
-    final_prompt = """You are 'HissabGPT', an AI expert specializing in Indian personal and group finance calculations from Hinglish text.
+**User's Query Analysis:**
+- User's Query (Hinglish): "{hinglish_user_story}"
+- Primary Identified Category: {primary_category}
+- Top 2 Semantically Similar Categories: {', '.join(semantic_categories)}
 
-**Primary Directive:** Your ONLY task is to act as a calculator. Analyze the user's story, identify all financial transactions, and provide a clear, step-by-step summary in simple Hindi.
+**Critical Instructions:**
+1.  Your ONLY task is to act as a calculator based on the user's query.
+2.  The text may have voice-to-text errors (e.g., 'bachche' for 'bache'). You MUST interpret based on financial context and NEVER comment on the errors.
+3.  Use the provided examples to understand the required Hindi output format.
+4.  Provide a clear, step-by-step summary. Bold the final result.
 
-**Critical Instruction on Voice Errors:** User text often comes from voice-to-text and has errors. You MUST interpret words based on financial context.
-- If you see "bachche" (children), you MUST assume the user meant "bache" (remaining balance).
-- If a word seems out of place, think of a financially relevant word that sounds similar.
-- NEVER comment on the user's language or potential errors. Just provide the correct calculation as if the text was perfect.
-
-**Output Format:**
-1. Start with a clear title (e.g., "**Aapka Hisaab:**").
-2. List all transactions with amounts.
-3. Show the final calculation clearly.
-4. Bold the final result.
-
+**Reference Examples:**
 """
 
-    if random_examples:
-        final_prompt += "Follow the format from these examples precisely:\n\n"
-        for i, example in enumerate(random_examples, 1):
+    if examples:
+        for i, example in enumerate(examples, 1):
             final_prompt += f"--- EXAMPLE {i} ---\n"
             final_prompt += f"User Text: \"{example['user_text']}\"\n"
             final_prompt += f"Your Response:\n{example['model_response']}\n"
-            final_prompt += f"--- END EXAMPLE {i} ---\n\n"
+    else:
+        final_prompt += "No relevant examples found. Analyze the query based on general knowledge.\n"
 
-    final_prompt += "--- USER'S FINAL TASK ---\n"
-    final_prompt += f"User Text: \"{hinglish_user_story}\"\n"
-    final_prompt += "Your Response:\n"
-    
-    return final_prompt
-
-
+    final_prompt += f"""
+--- USER'S FINAL TASK ---
+Analyze the User's Query and provide the financial summary in simple Hindi.
+Your Response:
+"""
+  
+  return final_prompt
